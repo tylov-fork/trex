@@ -1,4 +1,4 @@
-T-REX 1.0 http://tiny-rex.sourceforge.net
+T-REX 1.1 http://tiny-rex.sourceforge.net
 ----------------------------------------------------------------------
 	T-Rex a tiny regular expression library
 
@@ -24,6 +24,51 @@ T-REX 1.0 http://tiny-rex.sourceforge.net
 		3. This notice may not be removed or altered from any
 		source distribution.
 		
+----------------------------------------------------------------------
+TRex implements the following expressions
+
+\	Quote the next metacharacter
+^	Match the beginning of the string
+.	Match any character
+$	Match the end of the string
+|	Alternation
+()	Grouping (creates a capture)
+[]	Character class  
+
+==GREEDY CLOSURES==
+*	   Match 0 or more times
++	   Match 1 or more times
+?	   Match 1 or 0 times
+{n}    Match exactly n times
+{n,}   Match at least n times
+{n,m}  Match at least n but not more than m times  
+
+==ESCAPE CHARACTERS==
+\t		tab                   (HT, TAB)
+\n		newline               (LF, NL)
+\r		return                (CR)
+\f		form feed             (FF)
+
+==PREDEFINED CLASSES==
+\l		lowercase next char
+\u		uppercase next char
+\a		letters
+\A		non letters
+\w		alphanimeric [0-9a-zA-Z]
+\W		non alphanimeric
+\s		space
+\S		non space
+\d		digits
+\D		non nondigits
+\x		exadecimal digits
+\X		non exadecimal digits
+\c		control charactrs
+\C		non control charactrs
+\p		punctation
+\P		non punctation
+
+----------------------------------------------------------------------
+API DOC
 ----------------------------------------------------------------------
 TRex *trex_compile(const TRexChar *pattern,const TRexChar **error);
 

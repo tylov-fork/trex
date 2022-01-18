@@ -18,7 +18,7 @@ static const TRexChar *g_nnames[] =
 {
 	_TREXC("NONE"),_TREXC("OP_GREEDY"),	_TREXC("OP_OR"),
 	_TREXC("OP_EXPR"),_TREXC("OP_DOT"),	_TREXC("OP_CLASS"),
-	_TREXC("OP_NCLASS"),_TREXC("OP_RANGE"),_TREXC("OP_CHAR"),
+	_TREXC("OP_CCLASS"),_TREXC("OP_NCLASS"),_TREXC("OP_RANGE"),_TREXC("OP_CHAR"),
 	_TREXC("OP_EOL"),_TREXC("OP_BOL")
 };
 
@@ -29,11 +29,12 @@ static const TRexChar *g_nnames[] =
 #define OP_EXPR			MAX_CHAR+3 //parentesis ()
 #define OP_DOT			MAX_CHAR+4
 #define OP_CLASS		MAX_CHAR+5
-#define OP_NCLASS		MAX_CHAR+6 //negates class the [^
-#define OP_RANGE		MAX_CHAR+7
-#define OP_CHAR			MAX_CHAR+8
-#define OP_EOL			MAX_CHAR+9
-#define OP_BOL			MAX_CHAR+10
+#define OP_CCLASS		MAX_CHAR+6
+#define OP_NCLASS		MAX_CHAR+7 //negates class the [^
+#define OP_RANGE		MAX_CHAR+8
+#define OP_CHAR			MAX_CHAR+9
+#define OP_EOL			MAX_CHAR+10
+#define OP_BOL			MAX_CHAR+11
 
 #define TREX_SYMBOL_ANY_CHAR '.'
 #define TREX_SYMBOL_GREEDY_ONE_OR_MORE '+'
@@ -113,22 +114,60 @@ static TRexBool trex_ischar(TRexChar c)
 
 static TRexChar trex_escapechar(TRex *exp)
 {
-	switch(*exp->_p) {
-	case 'n': *exp->_p++; return '\n';
-	case 't': *exp->_p++; return '\t';
-	case 'r': *exp->_p++; return '\r';
-	case 'f': *exp->_p++; return '\f';
-	default: return (*exp->_p++);
-	}
-}
-
-static TRexChar trex_char(TRex *exp)
-{
-	if(*exp->_p == TREX_SYMBOL_ESCAPE_CHAR){ *exp->_p++; return trex_escapechar(exp); }
-	else if(!trex_ischar(*exp->_p)) trex_error(exp,_TREXC("letter expected"));
+	if(*exp->_p == TREX_SYMBOL_ESCAPE_CHAR){
+		*exp->_p++;
+		switch(*exp->_p) {
+		case 'n': *exp->_p++; return '\n';
+		case 't': *exp->_p++; return '\t';
+		case 'r': *exp->_p++; return '\r';
+		case 'f': *exp->_p++; return '\f';
+		default: return (*exp->_p++);
+		}
+	} else if(!trex_ischar(*exp->_p)) trex_error(exp,_TREXC("letter expected"));
 	return (*exp->_p++);
 }
 
+static int trex_charclass(TRex *exp,int classid)
+{
+	int n = trex_newnode(exp,OP_CCLASS);
+	exp->_nodes[n].left = classid;
+	return n;
+}
+
+static int trex_charnode(TRex *exp)
+{
+	if(*exp->_p == TREX_SYMBOL_ESCAPE_CHAR) {
+		*exp->_p++;
+		switch(*exp->_p) {
+			case 'n': *exp->_p++; return trex_newnode(exp,'\n');
+			case 't': *exp->_p++; return trex_newnode(exp,'\t');
+			case 'r': *exp->_p++; return trex_newnode(exp,'\r');
+			case 'f': *exp->_p++; return trex_newnode(exp,'\f');
+			case 'a': *exp->_p++; return trex_charclass(exp,'a');
+			case 'A': *exp->_p++; return trex_charclass(exp,'A');
+			case 'w': *exp->_p++; return trex_charclass(exp,'w');
+			case 'W': *exp->_p++; return trex_charclass(exp,'W');
+			case 's': *exp->_p++; return trex_charclass(exp,'s');
+			case 'S': *exp->_p++; return trex_charclass(exp,'S');
+			case 'd': *exp->_p++; return trex_charclass(exp,'d');
+			case 'D': *exp->_p++; return trex_charclass(exp,'D');
+			case 'x': *exp->_p++; return trex_charclass(exp,'x');
+			case 'X': *exp->_p++; return trex_charclass(exp,'X');
+			case 'c': *exp->_p++; return trex_charclass(exp,'c');
+			case 'C': *exp->_p++; return trex_charclass(exp,'C');
+			case 'p': *exp->_p++; return trex_charclass(exp,'p');
+			case 'P': *exp->_p++; return trex_charclass(exp,'P');
+			case 'l': *exp->_p++; return trex_charclass(exp,'l');
+			case 'u': *exp->_p++; return trex_charclass(exp,'u');
+			default: return trex_newnode(exp,(*exp->_p++));
+		}
+	}
+	else if(!trex_ischar(*exp->_p)) {
+		
+		trex_error(exp,_TREXC("letter expected"));
+	}
+	return trex_newnode(exp,*exp->_p++);
+}
 static int trex_class(TRex *exp)
 {
 	int ret = -1;
@@ -149,26 +188,27 @@ static int trex_class(TRex *exp)
 			if(*exp->_p++ == ']') trex_error(exp,_TREXC("unfinished range"));
 			r = trex_newnode(exp,OP_RANGE);
 			if(first>*exp->_p) trex_error(exp,_TREXC("invalid range"));
-			exp->_nodes[r].left = first;
-			exp->_nodes[r].right = trex_char(exp);
+			if(exp->_nodes[first].type == OP_CCLASS) trex_error(exp,_TREXC("cannot use character classes in ranges"));
+			exp->_nodes[r].left = exp->_nodes[first].type;
+			exp->_nodes[r].right = trex_escapechar(exp);
             exp->_nodes[chain].next = r;
 			chain = r;
 			first = -1;
 		}
 		else{
 			if(first!=-1){
-				int c = trex_newnode(exp,first);
+				int c = first;
 				exp->_nodes[chain].next = c;
 				chain = c;
-				first = trex_char(exp);
+				first = trex_charnode(exp);
 			}
 			else{
-				first = trex_char(exp);
+				first = trex_charnode(exp);
 			}
 		}
 	}
 	if(first!=-1){
-		int c = trex_newnode(exp,first);
+		int c = first;
 		exp->_nodes[chain].next = c;
 		chain = c;
 		first = -1;
@@ -214,7 +254,7 @@ static int trex_element(TRex *exp)
 	case TREX_SYMBOL_END_OF_STRING: *exp->_p++; ret = trex_newnode(exp,OP_EOL);break;
 	case TREX_SYMBOL_ANY_CHAR: *exp->_p++; ret = trex_newnode(exp,OP_DOT);break;
 	default:
-		ret = trex_newnode(exp,trex_char(exp));
+		ret = trex_charnode(exp);
 		break;
 	}
 	/* scope block */
@@ -283,14 +323,41 @@ static int trex_list(TRex *exp)
 	return ret;
 }
 
+static TRexBool trex_matchcclass(int cclass,TRexChar c)
+{
+	switch(cclass) {
+	case 'a': return isalpha(c)?TRex_True:TRex_False;
+	case 'A': return !isalpha(c)?TRex_True:TRex_False;
+	case 'w': return isalnum(c)?TRex_True:TRex_False;
+	case 'W': return !isalnum(c)?TRex_True:TRex_False;
+	case 's': return isspace(c)?TRex_True:TRex_False;
+	case 'S': return !isspace(c)?TRex_True:TRex_False;
+	case 'd': return isdigit(c)?TRex_True:TRex_False;
+	case 'D': return !isdigit(c)?TRex_True:TRex_False;
+	case 'x': return isxdigit(c)?TRex_True:TRex_False;
+	case 'X': return !isxdigit(c)?TRex_True:TRex_False;
+	case 'c': return iscntrl(c)?TRex_True:TRex_False;
+	case 'C': return !iscntrl(c)?TRex_True:TRex_False;
+	case 'p': return ispunct(c)?TRex_True:TRex_False;
+	case 'P': return !ispunct(c)?TRex_True:TRex_False;
+	case 'l': return islower(c)?TRex_True:TRex_False;
+	case 'u': return isupper(c)?TRex_True:TRex_False;
+	}
+	return TRex_False; /*cannot happen*/
+}
+
 static TRexBool trex_matchclass(TRex* exp,TRexNode *node,TRexChar c)
 {
 	do {
-		if(node->type == OP_RANGE) {
-			if(c >= node->left && c <= node->right)return TRex_True;
-		}
-		else {
-			if(c == node->type)return TRex_True;
+		switch(node->type) {
+			case OP_RANGE:
+				if(c >= node->left && c <= node->right) return TRex_True;
+				break;
+			case OP_CCLASS:
+				if(trex_matchcclass(node->left,c)) return TRex_True;
+				break;
+			default:
+				if(c == node->type)return TRex_True;
 		}
 	} while((node->next != -1) && (node = &exp->_nodes[node->next]));
 	return TRex_False;
@@ -303,9 +370,12 @@ static const TRexChar *trex_matchnode(TRex* exp,TRexNode *node,const TRexChar *s
 	case OP_GREEDY: {
 		int p0 = (node->right >> 16)&0x0000FFFF, p1 = node->right&0x0000FFFF, nmaches = 0;
 		const TRexChar *s=str, *good = str;
-		while((nmaches == 0xFFFF || nmaches < p1) && (s = trex_matchnode(exp,&exp->_nodes[node->left],s))) {
+		while((nmaches == 0xFFFF || nmaches < p1) 
+			&& (s = trex_matchnode(exp,&exp->_nodes[node->left],s))) {
 			good=s;
 			nmaches++;
+			if(s >= exp->_eol)
+				break;
 		}
 		if(p0 == p1 && p0 == nmaches) return good;
 		else if(nmaches >= p0 && p1 == 0xFFFF) return good;
@@ -368,6 +438,12 @@ static const TRexChar *trex_matchnode(TRex* exp,TRexNode *node,const TRexChar *s
 	case OP_NCLASS:
 	case OP_CLASS:
 		if(trex_matchclass(exp,&exp->_nodes[node->left],*str)?(type == OP_CLASS?TRex_True:TRex_False):(type == OP_NCLASS?TRex_True:TRex_False)) {
+			*str++;
+			return str;
+		}
+		return NULL;
+	case OP_CCLASS:
+		if(trex_matchcclass(node->left,*str)) {
 			*str++;
 			return str;
 		}

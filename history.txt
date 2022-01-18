@@ -1,0 +1,6 @@
+===version 1.1
+-fixed some minor bug
+-added predefined character classes(\w,\W,\s,\S etc...)
+
+===version 1.0 , February 23, 2004
+-first public realase
